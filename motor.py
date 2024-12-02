@@ -1,18 +1,15 @@
-import digitalio
-import analogio
 import pwmio
+import digitalio
 import time
-from board import A6, A7, D2, D3, D4, D5, D10, D11, D12, D13
+from board import A6, A7, D2, D3, D10, D11, D12, D13
 
 # Setup for Motor A
-ain1 = analogio.AnalogOut(A6)
+ain1 = digitalio.DigitalInOut(A6)
 pwm_a = pwmio.PWMOut(D2, frequency=1000)
 
 # Setup for Motor B
-bin1 = analogio.AnalogOut(A7)
+bin1 = digitalio.DigitalInOut(A7)
 pwm_b = pwmio.PWMOut(D3, frequency=1000)
-
-# Change the direction pins
 
 # Setup Encoders for Motor A
 enc_a1 = digitalio.DigitalInOut(D10)
@@ -77,24 +74,36 @@ def pid(setpoint, current):
     ki = 0.5
     feedforward = 40
 
+    # Calculate the error
     error = setpoint - current
 
+    # Calculate the time step
     dt = time.monotonic() - measureStart
+    if dt == 0:  # Prevent division by zero
+        dt = 1e-6  # Use a small default value
+
+    # Proportional term
     p = kp * error
+
+    # Derivative term
     d = kd * (error - previous_error) / dt
+
+    # Integral term
+    integral_error += error * dt
     if integral_error >= 1200:
         integral_error = 1200
     i = ki * integral_error
-    
-    # print("Error = ", error)
-    # print("Derivative Error = ", error-previous_error)
-    # print("Integral Error = ", integral_error)
+
+    # Update previous values
     previous_error = error
     measureStart = time.monotonic()
-    integral_error += error
+
+    # Calculate the PID output
     update = p + d + i
-    # print(update)
-    updateDuty = int(update*(2**15)/300)
+
+    # Convert the output to a suitable duty cycle
+    updateDuty = int(update * (2**15) / 300)
+
     return updateDuty
 
 # Function that sets the speed for each Motor independently
@@ -131,7 +140,23 @@ def setMotors(speedA, speedB):
             in1.value = 65535
             pwm.duty_cycle = abs(x)
 
+# Desired RPMs for Motor A and Motor B
+desired_rpm_A = 25
+desired_rpm_B = 25 
 
 while True:
-    print(encoder(0.5))
-    #time.sleep(1)
+    # Measure the current RPMs for both motors
+    current_rpm_A, current_rpm_B = encoder(0.1)
+
+    # Print the measured RPMs for debugging
+    print(f"Measured RPM - Motor A: {current_rpm_A}, Motor B: {current_rpm_B}")
+
+    # Calculate control signals only if RPM is non-zero
+    control_signal_A = pid(desired_rpm_A, current_rpm_A)
+    control_signal_B = pid(desired_rpm_B, current_rpm_B) 
+    
+    # Apply control signals to the motors
+    setMotorsDuty(control_signal_A, control_signal_B)
+
+    # Add a small delay
+    time.sleep(0.1)
