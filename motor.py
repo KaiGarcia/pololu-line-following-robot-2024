@@ -140,13 +140,10 @@ def setMotors(speedA, speedB):
             in1.value = 65535
             pwm.duty_cycle = abs(x)
 
-# Desired RPMs for Motor A and Motor B
-desired_rpm_A = 25
-desired_rpm_B = 25 
-
-while True:
+# Set Motor A and Motor B at a desired RPM value
+def setMotorsPID(desired_rpm_A = 25, desired_rpm_B = 25, update_time = 0.1):
     # Measure the current RPMs for both motors
-    current_rpm_A, current_rpm_B = encoder(0.1)
+    current_rpm_A, current_rpm_B = encoder(update_time)
 
     # Print the measured RPMs for debugging
     print(f"Measured RPM - Motor A: {current_rpm_A}, Motor B: {current_rpm_B}")
@@ -154,9 +151,6 @@ while True:
     # Calculate control signals only if RPM is non-zero
     control_signal_A = pid(desired_rpm_A, current_rpm_A)
     control_signal_B = pid(desired_rpm_B, current_rpm_B) 
-    
+
     # Apply control signals to the motors
     setMotorsDuty(control_signal_A, control_signal_B)
-
-    # Add a small delay
-    time.sleep(0.1)

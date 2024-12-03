@@ -62,8 +62,34 @@ def calculate_line_position(binary_readings, sensor_positions):
         return None
     return num / den
 
+# Determine if all sensors over white
+def all_white(binary_readings):
+    num_sensors = 0
+    # Check each sensor reading
+    for reading in binary_readings:
+        num_sensors += reading
+    
+    # Output true if all sensors detect white
+    if num_sensors == 0:
+        return True
+    else:
+        return False
+
+# Determine if all sensors over black
+def all_black(binary_readings):
+    num_sensors = 0
+    # Check each sensor reading
+    for reading in binary_readings:
+        num_sensors += reading
+    
+    # Output true if all sensors detect white
+    if num_sensors == 0:
+        return True
+    else:
+        return False
+
 # Set motor speeds
-def setMotors(dutyA, dutyB):
+def setMotorsDuty(dutyA, dutyB):
     motors = {'A': (ain1, pwm_a, dutyA), 'B': (bin1, pwm_b, dutyB)}
     for motor, (in1, pwm, dutyCycle) in motors.items():
         if dutyCycle > 0:  # Forward (CW)
@@ -76,13 +102,13 @@ def setMotors(dutyA, dutyB):
             in1.value = False
             pwm.duty_cycle = 0
 
-sensor_positions = [-3, -2, -1, 0, 1, 2]  # Positions of the sensors
-base_speed_left = 10  # Base speed for the left motor
-base_speed_right = 10  # Base speed for the right motor
+def lineFollow(base_speed, time_increment):
+    sensor_positions = [-3, -2, -1, 1, 2, 3]  # Positions of the sensors
+    base_speed_left = base_speed  # Base speed for the left motor
+    base_speed_right = base_speed  # Base speed for the right motor
 
-while True:
     readings = []
-
+    
     # Read decay times from sensors
     for sensor in sensors:
         decay_time = read_sensor(sensor)
@@ -94,13 +120,13 @@ while True:
     line_position = calculate_line_position(binary_readings, sensor_positions)
     # Adjust motor speeds based on line position
     if line_position is not None:
-        turn_correction = line_position * 5   # Scale to fix directiom
+        turn_correction = line_position * 5   # Scale to fix direction
         left_speed = base_speed_left - turn_correction
         right_speed = base_speed_right + turn_correction
-        setMotors(max(0, min(100, left_speed)), max(0, min(100, right_speed)))
+        setMotorsDuty(max(0, min(100, left_speed)), max(0, min(100, right_speed)))
     else:
         # if centered keep running at the same speed
-        setMotors(base_speed_left, base_speed_right)
+        setMotorsDuty(-base_speed_left, -base_speed_right)
     
     print(f"Speed for Both Motors: right:{right_speed} left:{left_speed}")
     print(f"Raw Decay Times: {readings}")
@@ -109,4 +135,6 @@ while True:
     print(f"Motor Speeds: Left = {base_speed_left}, Right = {base_speed_right}")
     print(f"New Speed: Left = {left_speed}, Right = {right_speed}")
 
-    time.sleep(0.1)
+    time.sleep(time_increment)  # Wait for time_increment seconds before making next adjustment
+
+
