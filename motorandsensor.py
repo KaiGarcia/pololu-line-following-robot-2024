@@ -1,28 +1,30 @@
 import time
 import digitalio
 import pwmio
-import analogio
+from analogio import AnalogOut
 from board import A6, A7, D2, D3, D4, D5, D6, D7, D8, D9, D10, D11, D12, D13
 
 # Reflectance sensors
 sensors = [
-    digitalio.DigitalInOut(D8),
-    digitalio.DigitalInOut(D9),
-    digitalio.DigitalInOut(D10),
-    digitalio.DigitalInOut(D11),
-    digitalio.DigitalInOut(D12),
     digitalio.DigitalInOut(D13),
+    digitalio.DigitalInOut(D12),
+    digitalio.DigitalInOut(D11),
+    digitalio.DigitalInOut(D10),
+    digitalio.DigitalInOut(D9),
+    digitalio.DigitalInOut(D8),
 ]
 
 for sensor in sensors:
     sensor.direction = digitalio.Direction.INPUT
 
 # Setup for Motor A
-ain1 = analogio.AnalogIn(A6)
+ain1 = digitalio.DigitalInOut(A6)
+ain1.direction = digitalio.Direction.OUTPUT
 pwm_a = pwmio.PWMOut(D6, frequency=1000)
 
 # Setup for Motor B
-bin1 = analogio.AnalogIn(A7)
+bin1 = digitalio.DigitalInOut(A7)
+bin1.direction = digitalio.Direction.OUTPUT
 pwm_b = pwmio.PWMOut(D7, frequency=1000)
 
 # Setup Encoders for Motor A
@@ -87,14 +89,14 @@ def pid(setpoint, current):
     kd = 0.05
     ki = 0.5
     feedforward = 40
-
+    
     # Calculate the error
     error = setpoint - current
 
     # Calculate the time step
     dt = time.monotonic() - measureStart
     if dt == 0:  # Prevent division by zero
-        dt = 1e-6  # Use a small default value
+        dt = 1  # Use a small default value
 
     # Proportional term
     p = kp * error
@@ -116,7 +118,13 @@ def pid(setpoint, current):
     update = p + d + i
 
     # Convert the output to a suitable duty cycle
-    updateDuty = int(update * (2**15) / 300)
+    updateDuty = int(update * (2**15) / 500)
+    
+    if updateDuty >= (2**15):
+        updateDuty = 2**15
+    
+    if updateDuty <= (-1*(2**15)):
+        updateDuty = -2**15
 
     return updateDuty
 
@@ -133,7 +141,7 @@ def read_sensor(sensor):
     return (end_time - start_time) * 1_000_000  # Decay time in μs
 
 # Normalize sensor values
-def normalizeSensorValues(sensor_values, white_val=500, black_val=2000):
+def normalizeSensorValues(sensor_values, white_val=50, black_val=2000):
     normalized_values = []
     for val in sensor_values:
         normalized_value = (val - white_val) / (black_val - white_val)
@@ -186,12 +194,12 @@ def all_black(binary_readings):
 def setMotorsDuty(dutyA, dutyB):
     motors = {'A': (ain1, pwm_a, dutyA), 'B': (bin1, pwm_b, dutyB)}
     for motor, (in1, pwm, dutyCycle) in motors.items():
-        if dutyCycle > 0:  # Forward (CW)
+        if dutyCycle < 0:  # Forward (CW)
             in1.value = True
-            pwm.duty_cycle = int((dutyCycle / 100) * 65535)
-        elif dutyCycle < 0:  # Backward (CCW)
+            pwm.duty_cycle = int(abs(dutyCycle))
+        elif dutyCycle > 0:  # Backward (CCW)
             in1.value = False
-            pwm.duty_cycle = int((abs(dutyCycle) / 100) * 65535)
+            pwm.duty_cycle = int(abs(dutyCycle))
         else:  # Stop
             in1.value = False
             pwm.duty_cycle = 0
@@ -209,6 +217,7 @@ def setMotorsPID(desired_rpm_A = 25, desired_rpm_B = 25, update_time = 0.1):
     control_signal_B = pid(desired_rpm_B, current_rpm_B) 
 
     # Apply control signals to the motors
+    print(control_signal_A, control_signal_B)
     setMotorsDuty(control_signal_A, control_signal_B)
 
 # Function that makes robot follow a line
@@ -224,19 +233,21 @@ def lineFollow(base_speed = 25, time_increment = 0.1):
         decay_time = read_sensor(sensor)
         readings.append(decay_time)
     # Normalize Readings
-    normalized_readings = normalizeSensorValues(readings, white_val=50000, black_val=80000)
+    normalized_readings = normalizeSensorValues(readings, white_val=0, black_val=2000)
     binary_readings = thresholdSensorValues(normalized_readings, threshold=0.7)
     # Calculate the line position
     line_position = calculate_line_position(binary_readings, sensor_positions)
     # Adjust motor speeds based on line position
     if line_position is not None:
-        turn_correction = line_position * 5   # Scale to fix direction
+        turn_correction = line_position * 10   # Scale to fix direction
         left_speed = base_speed_left - turn_correction
         right_speed = base_speed_right + turn_correction
-        setMotorsPID(max(0, min(100, left_speed)), max(0, min(100, right_speed)))
+        setMotorsPID(max(-100, min(100, left_speed)), max(-100, min(100, right_speed)))
     else:
         # if centered keep running at the same speed
-        setMotorsPID(-1, -1)
+        left_speed = 0
+        right_speed = 0
+        setMotorsPID(max(-100, min(100, left_speed)), max(-100, min(100, right_speed)))
     
     print(f"Speed for Both Motors: right:{right_speed} left:{left_speed}")
     print(f"Raw Decay Times: {readings}")
@@ -247,3 +258,5 @@ def lineFollow(base_speed = 25, time_increment = 0.1):
 
     time.sleep(time_increment)  # Wait for time_increment seconds before making next adjustment
 
+while True:
+    lineFollow()
