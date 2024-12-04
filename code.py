@@ -1,4 +1,3 @@
-
 import time
 import digitalio
 import pwmio
@@ -7,12 +6,12 @@ from board import A6, A7, D2, D3, D4, D5, D6, D7, D8, D9, D10, D11, D12, D13
 
 # Reflectance sensors
 sensors = [
-    digitalio.DigitalInOut(D13),
-    digitalio.DigitalInOut(D12),
-    digitalio.DigitalInOut(D11),
-    digitalio.DigitalInOut(D10),
-    digitalio.DigitalInOut(D9),
     digitalio.DigitalInOut(D8),
+    digitalio.DigitalInOut(D9),
+    digitalio.DigitalInOut(D10),
+    digitalio.DigitalInOut(D11),
+    digitalio.DigitalInOut(D12),
+    digitalio.DigitalInOut(D13),
 ]
 
 for sensor in sensors:
@@ -41,12 +40,16 @@ enc_b2 = digitalio.DigitalInOut(D5)
 enc_b2.direction = digitalio.Direction.INPUT
 
 # Function that measures the speed of the encoders and outputs
+last_state_A = False
+last_state_B = False
+fwd_A = 1
+fwd_B = 1
 def encoder(time_step):
     start_time = time.monotonic()
-
     # Set the previous states for Motor A and Motor B
-    last_state_A = False
-    last_state_B = False
+    global last_state_A, last_state_B, fwd_A, fwd_B
+    last_A_fwd = enc_a1.value
+    last_B_fwd = enc_b1.value
 
     # Set counts for pulses
     pulse_A = 0
@@ -54,6 +57,7 @@ def encoder(time_step):
     while (time.monotonic() - start_time) <= time_step:
         # Motor A - A XOR B
         current_state_A = (enc_a1.value and not enc_a2.value) or (not enc_a1.value and enc_a2.value)
+        A_fwd = enc_a1.value
         # Motor B - A XOR B
         current_state_B = (enc_b1.value and not enc_b2.value) or (not enc_b1.value and enc_b2.value)
 
@@ -61,9 +65,21 @@ def encoder(time_step):
         if current_state_A != last_state_A:
             pulse_A += 1
             last_state_A = current_state_A
+            if last_A_fwd != enc_a1.value:
+                if enc_a2.value != enc_a1.value:
+                    fwd_A = 1
+                else:
+                    fwd_A = -1
+        last_A_fwd = enc_a1.value
         if current_state_B != last_state_B:
             pulse_B += 1
             last_state_B = current_state_B
+            if last_B_fwd != enc_b1.value:
+                if enc_b2.value != enc_b1.value:
+                    fwd_B = -1
+                else:
+                    fwd_B = 1
+        last_B_fwd = enc_b1.value
 
     # Convert pulse count into number of rotations
     pulse_per_rotation = 1440
@@ -71,69 +87,124 @@ def encoder(time_step):
     rotations_B = pulse_B / pulse_per_rotation
 
     # Convert rotations into rpm
-    rpm_A = rotations_A * 60 / time_step
-    rpm_B = rotations_B * 60 / time_step
+    rpm_A = fwd_A*rotations_A * 60 / time_step
+    rpm_B = fwd_B*rotations_B * 60 / time_step
 
     return rpm_A, rpm_B
 
 # Set up error terms for PID tuning
-previous_error = 0
-integral_error = 0
+previous_error_A = 0
+integral_error_A = 0
+previous_error_B = 0
+integral_error_B = 0
 measureStart = time.monotonic()
+A = 0
+B = 1
 
 # Perform PID tuning
-def pid(setpoint, current):
-    global previous_error, integral_error, measureStart
+def pid(mot, setpoint, current):
+    global A, B, previous_error_A, integral_error_A, previous_error_B, integral_error_B, measureStart
+    
+    if mot == A:
+        # Proportional, Derivative, and Integral Gains
+        kp = 0.6
+        kd = 0.2
+        ki = 0.05
+        feedforward = 5
 
-    # Proportional, Derivative, and Integral Gains
-    kp = 0.12
-    kd = 0.05
-    ki = 0.5
-    feedforward = 40
+        # Calculate the error
+        error = setpoint - current
 
-    # Calculate the error
-    error = setpoint - current
+        # Calculate the time step
+        dt = time.monotonic() - measureStart
+        if dt == 0:  # Prevent division by zero
+            dt = 0.1  # Use a small default value
 
-    # Calculate the time step
-    dt = time.monotonic() - measureStart
-    if dt == 0:  # Prevent division by zero
-        dt = 1  # Use a small default value
+        # Proportional term
+        p = kp * error
 
-    # Proportional term
-    p = kp * error
+        # Derivative term
+        d = kd * (error - previous_error_A) / dt
 
-    # Derivative term
-    d = kd * (error - previous_error) / dt
+        # Integral term
+        integral_error_A += error * dt
+        if integral_error_A >= 1200:
+            integral_error_A = 1200
+        
+        i = ki * integral_error_A
 
-    # Integral term
-    integral_error += error * dt
-    if integral_error >= 1200:
-        integral_error = 1200
-    i = ki * integral_error
+        # Update previous values
+        previous_error_A = error
+        measureStart = time.monotonic()
 
-    # Update previous values
-    previous_error = error
-    measureStart = time.monotonic()
+        # Calculate the PID output
+        update = p + d + i
+        print(update)
+        
+        # Convert the output to a suitable duty cycle
+        updateDuty = int(update * (2**15) / 500)
 
-    # Calculate the PID output
-    update = p + d + i
+        if updateDuty >= (2**15):
+            updateDuty = 2**15
 
-    # Convert the output to a suitable duty cycle
-    updateDuty = int(update * (2**15) / 500)
+        if updateDuty <= (-1*(2**15)):
+            updateDuty = -2**15
 
-    if updateDuty >= (2**15):
-        updateDuty = 2**15
+        return updateDuty
+    
+    elif mot == B:
+        # Proportional, Derivative, and Integral Gains
+        kp = 0.6
+        kd = 0.2
+        ki = 0.05
+        feedforward = 5
 
-    if updateDuty <= (-1*(2**15)):
-        updateDuty = -2**15
+        # Calculate the error
+        error = setpoint - current
 
-    return updateDuty
+        # Calculate the time step
+        dt = time.monotonic() - measureStart
+        if dt == 0:  # Prevent division by zero
+            dt = 0.1  # Use a small default value
+
+        # Proportional term
+        p = kp * error
+
+        # Derivative term
+        d = kd * (error - previous_error_B) / dt
+        # Integral term
+        integral_error_B += error * dt
+        if integral_error_B >= 1200:
+            integral_error_B = 1200
+        
+        i = ki * integral_error_B
+
+        # Update previous values
+        previous_error_B = error
+        measureStart = time.monotonic()
+
+        # Calculate the PID output
+        update = p + d + i
+        print(update)
+
+        # Convert the output to a suitable duty cycle
+        updateDuty = int(update * (2**15) / 500)
+
+        if updateDuty >= (2**15):
+            updateDuty = 2**15
+
+        if updateDuty <= (-1*(2**15)):
+            updateDuty = -2**15
+
+        return updateDuty
+    else:
+        return None
 
 # Function to read a single sensor
 def read_sensor(sensor):
     sensor.direction = digitalio.Direction.OUTPUT
     sensor.value = True
-    time.sleep(0.00001)  # Charge for 10 μs
+    time.sleep(0.00002)  # Charge for 20 μs
     sensor.direction = digitalio.Direction.INPUT
     start_time = time.monotonic()
     while sensor.value:
@@ -206,7 +277,7 @@ def setMotorsDuty(dutyA, dutyB):
             pwm.duty_cycle = 0
 
 # Set Motor A and Motor B at a desired RPM value
-def setMotorsPID(desired_rpm_A = 25, desired_rpm_B = 25, update_time = 0.1):
+def setMotorsPID(desired_rpm_A = 15, desired_rpm_B = 15, update_time = 0.1):
     # Measure the current RPMs for both motors
     current_rpm_A, current_rpm_B = encoder(update_time)
 
@@ -214,15 +285,18 @@ def setMotorsPID(desired_rpm_A = 25, desired_rpm_B = 25, update_time = 0.1):
     print(f"Measured RPM - Motor A: {current_rpm_A}, Motor B: {current_rpm_B}")
 
     # Calculate control signals only if RPM is non-zero
-    control_signal_A = pid(desired_rpm_A, current_rpm_A)
-    control_signal_B = pid(desired_rpm_B, current_rpm_B)
+    control_signal_A = pid(A, desired_rpm_A, current_rpm_A)
+    control_signal_B = pid(B, desired_rpm_B, current_rpm_B)
 
     # Apply control signals to the motors
     print(control_signal_A, control_signal_B)
     setMotorsDuty(control_signal_A, control_signal_B)
-
+left_speed = 0
+right_speed = 0
+i = 0
 # Function that makes robot follow a line
-def lineFollow(base_speed = 25, time_increment = 0.1):
+def lineFollow(base_speed = 55, time_increment = 0.1):
+    global left_speed, right_speed, i
     sensor_positions = [-3, -2, -1, 1, 2, 3]  # Positions of the sensors
     base_speed_left = base_speed  # Base speed for the left motor
     base_speed_right = base_speed  # Base speed for the right motor
@@ -234,21 +308,36 @@ def lineFollow(base_speed = 25, time_increment = 0.1):
         decay_time = read_sensor(sensor)
         readings.append(decay_time)
     # Normalize Readings
-    normalized_readings = normalizeSensorValues(readings, white_val=0, black_val=2000)
-    binary_readings = thresholdSensorValues(normalized_readings, threshold=0.7)
+    normalized_readings = normalizeSensorValues(readings, white_val=0, black_val=3000)
+    binary_readings = thresholdSensorValues(normalized_readings, threshold=0.9)
     # Calculate the line position
     line_position = calculate_line_position(binary_readings, sensor_positions)
     # Adjust motor speeds based on line position
     if line_position is not None:
-        turn_correction = line_position * 10   # Scale to fix direction
-        left_speed = base_speed_left - turn_correction
-        right_speed = base_speed_right + turn_correction
-        # setMotorsPID(max(-100, min(100, left_speed)), max(-100, min(100, right_speed)))
+        turn_correction = line_position * 30
+        i = 0
+        if turn_correction > 0:
+            left_speed = turn_correction
+            right_speed = 0
+        elif turn_correction < 0:
+            left_speed = 0
+            right_speed = -turn_correction
+        else:
+            left_speed = base_speed
+            right_speed = base_speed
     else:
-        # if centered keep running at the same speed
-        left_speed = 0
-        right_speed = 0
-        # setMotorsPID(max(-100, min(100, left_speed)), max(-100, min(100, right_speed)))
+        # Stop if line lost
+        i += 1
+        if i > 20:
+            left_speed = 0
+            right_speed = 0
+        else:
+            left_speed = left_speed
+            right_speed = right_speed
+    
+    start_PID_time = time.monotonic()
+    while (time.monotonic() - start_PID_time) <= time_increment:
+        setMotorsDuty(int(max(-100, min(100, left_speed))*(2**15/100)), int(max(-100, min(100, right_speed))*(2**15 / 100)))
 
     print(f"Speed for Both Motors: right:{right_speed} left:{left_speed}")
     print(f"Raw Decay Times: {readings}")
@@ -256,8 +345,6 @@ def lineFollow(base_speed = 25, time_increment = 0.1):
     print(f"Line Position: {line_position}")
     print(f"Motor Speeds: Left = {base_speed_left}, Right = {base_speed_right}")
     print(f"New Speed: Left = {left_speed}, Right = {right_speed}")
-
-    time.sleep(time_increment)  # Wait for time_increment seconds before making next adjustment
 
 while True:
     lineFollow()
