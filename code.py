@@ -2,7 +2,7 @@ import time
 import digitalio
 import pwmio
 from analogio import AnalogOut
-from board import A6, A7, D2, D3, D4, D5, D6, D7, D8, D9, D10, D11, D12, D13
+from board import A3, A6, A7, D2, D3, D4, D5, D6, D7, D8, D9, D10, D11, D12, D13
 
 # Reflectance sensors
 sensors = [
@@ -11,7 +11,7 @@ sensors = [
     digitalio.DigitalInOut(D10),
     digitalio.DigitalInOut(D11),
     digitalio.DigitalInOut(D12),
-    digitalio.DigitalInOut(D13),
+    digitalio.DigitalInOut(A3),
 ]
 
 for sensor in sensors:
@@ -44,6 +44,7 @@ last_state_A = False
 last_state_B = False
 fwd_A = 1
 fwd_B = 1
+
 def encoder(time_step):
     start_time = time.monotonic()
     # Set the previous states for Motor A and Motor B
@@ -91,6 +92,47 @@ def encoder(time_step):
     rpm_B = fwd_B*rotations_B * 60 / time_step
 
     return rpm_A, rpm_B
+
+def calibrate_encoder(time_step):
+    start_time = time.monotonic()
+    # Set the previous states for Motor A and Motor B
+    global last_state_A, last_state_B, fwd_A, fwd_B
+    last_A_fwd = enc_a1.value
+    last_B_fwd = enc_b1.value
+
+    # Set counts for pulses
+    pulse_A = 0
+    pulse_B = 0
+    while (time.monotonic() - start_time) <= time_step:
+        # Motor A - A XOR B
+        current_state_A = (enc_a1.value and not enc_a2.value) or (not enc_a1.value and enc_a2.value)
+        A_fwd = enc_a1.value
+        # Motor B - A XOR B
+        current_state_B = (enc_b1.value and not enc_b2.value) or (not enc_b1.value and enc_b2.value)
+
+        # Count when the current states of the encoder change to count the number of cycles
+        if current_state_A != last_state_A:
+            pulse_A += 1
+            last_state_A = current_state_A
+            if last_A_fwd != enc_a1.value:
+                if enc_a2.value != enc_a1.value:
+                    fwd_A = 1
+                else:
+                    fwd_A = -1
+        last_A_fwd = enc_a1.value
+        if current_state_B != last_state_B:
+            pulse_B += 1
+            last_state_B = current_state_B
+            if last_B_fwd != enc_b1.value:
+                if enc_b2.value != enc_b1.value:
+                    fwd_B = -1
+                else:
+                    fwd_B = 1
+        last_B_fwd = enc_b1.value
+
+    # Convert pulse count into number of rotations
+    print(pulse_A, pulse_B)
+
 
 # Set up error terms for PID tuning
 previous_error_A = 0
@@ -236,6 +278,36 @@ def calculate_line_position(binary_readings, sensor_positions):
         return None
     return num / den
 
+def calibrate_sensor():
+    sensor_positions = [-3, -2, -1, 1, 2, 3]  # Positions of the sensors
+    sum = [0, 0, 0, 0, 0, 0]
+    iterations = 0
+    min_iterations = 25
+    
+    meas_time = 1.0
+    meas_start = time.monotonic()
+    
+    while (((time.monotonic() - meas_start) <= meas_time) or (iterations < min_iterations)):
+        n = 0
+        for sensor in sensors:
+            decay_time = read_sensor(sensor)
+            sum[n] = sum[n] + decay_time
+            n += 1
+        iterations += 1
+    
+    readings = [reading / iterations for reading in sum]
+        
+    # Normalize Readings
+    normalized_readings = normalizeSensorValues(readings, white_val=0, black_val=2000)
+    binary_readings = thresholdSensorValues(normalized_readings, threshold=0.85)
+    # Calculate the line position
+    line_position = calculate_line_position(binary_readings, sensor_positions)
+    
+    print(f"Raw Decay Times: {readings}")
+    print(f"Normalized Sensor Readings: {normalized_readings}")
+    print(f"Binary Readings: {binary_readings}")
+    print(f"Line Position: {line_position}")
+
 # Determine if all sensors over white
 def all_white(binary_readings):
     num_sensors = 0
@@ -308,13 +380,13 @@ def lineFollow(base_speed = 55, time_increment = 0.1):
         decay_time = read_sensor(sensor)
         readings.append(decay_time)
     # Normalize Readings
-    normalized_readings = normalizeSensorValues(readings, white_val=0, black_val=3000)
-    binary_readings = thresholdSensorValues(normalized_readings, threshold=0.9)
+    normalized_readings = normalizeSensorValues(readings, white_val=0, black_val=2000)
+    binary_readings = thresholdSensorValues(normalized_readings, threshold=0.85)
     # Calculate the line position
     line_position = calculate_line_position(binary_readings, sensor_positions)
     # Adjust motor speeds based on line position
     if line_position is not None:
-        turn_correction = line_position * 30
+        turn_correction = line_position * 35
         i = 0
         if turn_correction > 0:
             left_speed = turn_correction
@@ -328,7 +400,7 @@ def lineFollow(base_speed = 55, time_increment = 0.1):
     else:
         # Stop if line lost
         i += 1
-        if i > 20:
+        if i > 10:
             left_speed = 0
             right_speed = 0
         else:
@@ -343,8 +415,68 @@ def lineFollow(base_speed = 55, time_increment = 0.1):
     print(f"Raw Decay Times: {readings}")
     print(f"Binary Readings: {binary_readings}")
     print(f"Line Position: {line_position}")
-    print(f"Motor Speeds: Left = {base_speed_left}, Right = {base_speed_right}")
+    # print(f"Motor Speeds: Left = {base_speed_left}, Right = {base_speed_right}")
     print(f"New Speed: Left = {left_speed}, Right = {right_speed}")
+
+def drive_position(encoder_count_A, encoder_count_B):
+    # Set the previous states for Motor A and Motor B
+    global last_state_A, last_state_B, fwd_A, fwd_B
+    last_A_fwd = enc_a1.value
+    last_B_fwd = enc_b1.value
+    
+    # Set counts for pulses
+    pulse_A = 0
+    pulse_B = 0
+    turn_count_A = 0
+    turn_count_B = 0
+    # Set for negative values to encoder_count
+    if encoder_count_A < 0:
+        set_duty_speed_A = -60
+    else:
+        set_duty_speed_A = 60
+        
+    if encoder_count_B < 0:
+        set_duty_speed_B = -60
+    else:
+        set_duty_speed_B = 60
+    
+    setMotorsDuty(int(max(-100, min(100, set_duty_speed_A))*(2**15/100)), int(max(-100, min(100, set_duty_speed_B))*(2**15/100)))
+    while ((abs(turn_count_A) < abs(encoder_count_A)) or (abs(turn_count_B) < abs(encoder_count_B))):
+        current_state_A = (enc_a1.value and not enc_a2.value) or (not enc_a1.value and enc_a2.value)
+        current_state_B = (enc_b1.value and not enc_b2.value) or (not enc_b1.value and enc_b2.value)
+            
+        if current_state_A != last_state_A:
+            pulse_A += 1
+            last_state_A = current_state_A
+            if last_A_fwd != enc_a1.value:
+                if enc_a2.value != enc_a1.value:
+                    fwd_A = 1
+                else:
+                    fwd_A = -1
+        last_A_fwd = enc_a1.value
+        turn_count_A = pulse_A*fwd_A
+
+        if current_state_B != last_state_B:
+            pulse_B += 1
+            last_state_B = current_state_B
+            if last_B_fwd != enc_b1.value:
+                if enc_b2.value != enc_b1.value:
+                    fwd_B = 1
+                else:
+                    fwd_B = -1
+        last_B_fwd = enc_b1.value
+        turn_count_B = pulse_B*fwd_B
+        
+        if abs(turn_count_A) >= abs(encoder_count_A):
+            set_duty_speed_A = 0
+            setMotorsDuty(int(max(-100, min(100, set_duty_speed_A))*(2**15/100)), int(max(-100, min(100, set_duty_speed_B))*(2**15/100)))
+        if abs(turn_count_B) >= abs(encoder_count_B):
+            set_duty_speed_B = 0
+            setMotorsDuty(int(max(-100, min(100, set_duty_speed_A))*(2**15/100)), int(max(-100, min(100, set_duty_speed_B))*(2**15/100)))
+    
+def turnDegrees(angle):
+    c = angle*8
+    drive_position(c, -c)
 
 while True:
     lineFollow()
