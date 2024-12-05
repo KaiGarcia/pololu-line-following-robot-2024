@@ -3,8 +3,10 @@ import digitalio
 import pwmio
 from analogio import AnalogOut
 from board import A3, A6, A7, D2, D3, D4, D5, D6, D7, D8, D9, D10, D11, D12, D13
-from robot import motor
-from robot import sensor
+from robot import motor, sensor, state_machine
+
+# INITIATE STATE MACHINE
+state_machine_instance = state_machine.StateMachine()
 
 left_speed = 0
 right_speed = 0
