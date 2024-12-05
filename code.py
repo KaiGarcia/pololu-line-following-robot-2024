@@ -1,10 +1,16 @@
+import time
+import digitalio
+import pwmio
+from analogio import AnalogOut
+from board import A3, A6, A7, D2, D3, D4, D5, D6, D7, D8, D9, D10, D11, D12, D13
 from robot import motor
 from robot import sensor
+
 left_speed = 0
 right_speed = 0
 i = 0
 # Function that makes robot follow a line
-def lineFollow(base_speed = 55, time_increment = 0.1):
+def lineFollow(base_speed = 45, time_increment = 0.1):
     global left_speed, right_speed, i
     sensor_positions = [-3, -2, -1, 1, 2, 3]  # Positions of the sensors
     base_speed_left = base_speed  # Base speed for the left motor
@@ -13,8 +19,8 @@ def lineFollow(base_speed = 55, time_increment = 0.1):
     readings = []
 
     # Read decay times from sensors
-    for sensor.sensor in sensors:
-        decay_time = sensor.read_sensor(sensor)
+    for sense in sensor.sensors:
+        decay_time = sensor.read_sensor(sense)
         readings.append(decay_time)
     # Normalize Readings
     normalized_readings = sensor.normalizeSensorValues(readings, white_val=0, black_val=2000)
@@ -23,7 +29,7 @@ def lineFollow(base_speed = 55, time_increment = 0.1):
     line_position = sensor.calculate_line_position(binary_readings, sensor_positions)
     # Adjust motor speeds based on line position
     if line_position is not None:
-        turn_correction = line_position * 35
+        turn_correction = line_position * 10
         i = 0
         if turn_correction > 0:
             left_speed = max(0, (base_speed_left + turn_correction))
