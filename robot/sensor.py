@@ -58,10 +58,10 @@ def calibrate_sensor():
     sum = [0, 0, 0, 0, 0, 0]
     iterations = 0
     min_iterations = 25
-    
+
     meas_time = 1.0
     meas_start = time.monotonic()
-    
+
     while (((time.monotonic() - meas_start) <= meas_time) or (iterations < min_iterations)):
         n = 0
         for sensor in sensors:
@@ -69,19 +69,20 @@ def calibrate_sensor():
             sum[n] = sum[n] + decay_time
             n += 1
         iterations += 1
-    
+
     readings = [reading / iterations for reading in sum]
-        
+
     # Normalize Readings
     normalized_readings = normalizeSensorValues(readings, white_val=0, black_val=2000)
     binary_readings = thresholdSensorValues(normalized_readings, threshold=0.85)
     # Calculate the line position
     line_position = calculate_line_position(binary_readings, sensor_positions)
-    
+
     print(f"Raw Decay Times: {readings}")
     print(f"Normalized Sensor Readings: {normalized_readings}")
     print(f"Binary Readings: {binary_readings}")
     print(f"Line Position: {line_position}")
+    return binary_readings
 
 # Determine if all sensors over white
 def all_white(binary_readings):
@@ -103,7 +104,7 @@ def all_black(binary_readings):
     for reading in binary_readings:
         num_sensors += reading
 
-    # Output true if all sensors detect white
+    # Output true if all sensors detect black
     if num_sensors == 6:
         return True
     else:
