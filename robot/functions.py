@@ -25,9 +25,9 @@ def button_press(debounce_delay=0.5):
             return
 
 # Function that makes robot follow a line
-def lineFollow(base_speed = 15, time_increment = 0.1):
+def lineFollow(base_speed = 30, time_increment = 0.05):
     global left_speed, right_speed, i
-    sensor_positions = [-3, -2, -1, 1, 2, 3]  # Positions of the sensors
+    sensor_positions = [-5, -3, -1, 1, 3, 5]  # Positions of the sensors
     base_speed_left = base_speed  # Base speed for the left motor
     base_speed_right = base_speed  # Base speed for the right motor
 
@@ -43,19 +43,20 @@ def lineFollow(base_speed = 15, time_increment = 0.1):
 
     # Calculate the line position
     line_position = sensor.calculate_line_position(binary_readings, sensor_positions)
+    
     # Adjust motor speeds based on line position
     if line_position is not None:
-        turn_correction = line_position * 20
+        turn_correction = line_position * 9
         i = 0
         if turn_correction > 0:
             left_speed = max(0, (base_speed_left + turn_correction))
-            right_speed = base_speed
+            right_speed = max(0, (base_speed_left - turn_correction))
         elif turn_correction < 0:
-            left_speed = base_speed
+            left_speed = max(0, (base_speed_left + turn_correction))
             right_speed = max(0, (base_speed_left - turn_correction))
         else:
-            left_speed = base_speed*3
-            right_speed = base_speed*3
+            left_speed = base_speed*2
+            right_speed = base_speed*2
     else:
         # Stop if line lost
         i += 1
@@ -107,3 +108,4 @@ def choosePath():
         print("Path 3 selected: Turn right.")
         motor.turnDegrees(45)
         lineFollow()
+
