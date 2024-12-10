@@ -133,7 +133,7 @@ B = 1
 # Perform PID tuning
 def pid(mot, setpoint, current):
     global A, B, previous_error_A, integral_error_A, previous_error_B, integral_error_B, measureStart
-    
+
     if mot == A:
         # Proportional, Derivative, and Integral Gains
         kp = 0.6
@@ -159,7 +159,7 @@ def pid(mot, setpoint, current):
         integral_error_A += error * dt
         if integral_error_A >= 1200:
             integral_error_A = 1200
-        
+
         i = ki * integral_error_A
 
         # Update previous values
@@ -169,7 +169,7 @@ def pid(mot, setpoint, current):
         # Calculate the PID output
         update = p + d + i
         print(update)
-        
+
         # Convert the output to a suitable duty cycle
         updateDuty = int(update * (2**15) / 500)
 
@@ -180,7 +180,7 @@ def pid(mot, setpoint, current):
             updateDuty = -2**15
 
         return updateDuty
-    
+
     elif mot == B:
         # Proportional, Derivative, and Integral Gains
         kp = 0.6
@@ -205,7 +205,7 @@ def pid(mot, setpoint, current):
         integral_error_B += error * dt
         if integral_error_B >= 1200:
             integral_error_B = 1200
-        
+
         i = ki * integral_error_B
 
         # Update previous values
@@ -242,6 +242,7 @@ def setMotorsDuty(dutyA, dutyB):
         else:  # Stop
             in1.value = False
             pwm.duty_cycle = 0
+    # print(f"Setting motors - Left Speed: {dutyA}, Right Speed: {dutyB}")
 
 # Set Motor A and Motor B at a desired RPM value
 def setMotorsPID(desired_rpm_A = 15, desired_rpm_B = 15, update_time = 0.1):
@@ -264,7 +265,7 @@ def drive_position(encoder_count_A, encoder_count_B):
     global last_state_A, last_state_B, fwd_A, fwd_B
     last_A_fwd = enc_a1.value
     last_B_fwd = enc_b1.value
-    
+
     # Set counts for pulses
     pulse_A = 0
     pulse_B = 0
@@ -275,17 +276,17 @@ def drive_position(encoder_count_A, encoder_count_B):
         set_duty_speed_A = -60
     else:
         set_duty_speed_A = 60
-        
+
     if encoder_count_B < 0:
         set_duty_speed_B = -60
     else:
         set_duty_speed_B = 60
-    
+
     setMotorsDuty(int(max(-100, min(100, set_duty_speed_A))*(2**15/100)), int(max(-100, min(100, set_duty_speed_B))*(2**15/100)))
     while ((abs(turn_count_A) < abs(encoder_count_A)) or (abs(turn_count_B) < abs(encoder_count_B))):
         current_state_A = (enc_a1.value and not enc_a2.value) or (not enc_a1.value and enc_a2.value)
         current_state_B = (enc_b1.value and not enc_b2.value) or (not enc_b1.value and enc_b2.value)
-            
+
         if current_state_A != last_state_A:
             pulse_A += 1
             last_state_A = current_state_A
@@ -307,14 +308,14 @@ def drive_position(encoder_count_A, encoder_count_B):
                     fwd_B = -1
         last_B_fwd = enc_b1.value
         turn_count_B = pulse_B*fwd_B
-        
+
         if abs(turn_count_A) >= abs(encoder_count_A):
             set_duty_speed_A = 0
             setMotorsDuty(int(max(-100, min(100, set_duty_speed_A))*(2**15/100)), int(max(-100, min(100, set_duty_speed_B))*(2**15/100)))
         if abs(turn_count_B) >= abs(encoder_count_B):
             set_duty_speed_B = 0
             setMotorsDuty(int(max(-100, min(100, set_duty_speed_A))*(2**15/100)), int(max(-100, min(100, set_duty_speed_B))*(2**15/100)))
-    
+
 def turnDegrees(angle):
     c = angle*8
     drive_position(c, -c)
