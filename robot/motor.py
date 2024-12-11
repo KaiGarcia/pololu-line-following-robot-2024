@@ -250,7 +250,7 @@ def setMotorsPID(desired_rpm_A = 15, desired_rpm_B = 15, update_time = 0.1):
     current_rpm_A, current_rpm_B = encoder(update_time)
 
     # Print the measured RPMs for debugging
-    print(f"Measured RPM - Motor A: {current_rpm_A}, Motor B: {current_rpm_B}")
+    # print(f"Measured RPM - Motor A: {current_rpm_A}, Motor B: {current_rpm_B}")
 
     # Calculate control signals only if RPM is non-zero
     control_signal_A = pid(A, desired_rpm_A, current_rpm_A)
@@ -316,6 +316,16 @@ def drive_position(encoder_count_A, encoder_count_B):
             set_duty_speed_B = 0
             setMotorsDuty(int(max(-100, min(100, set_duty_speed_A))*(2**15/100)), int(max(-100, min(100, set_duty_speed_B))*(2**15/100)))
 
+def inchForward(rotation = 0.2):
+    c = int(1440 * rotation)
+    drive_position(c, c)
+
 def turnDegrees(angle):
     c = angle*8
     drive_position(c, -c)
+
+def brake(brake_time = 0.05):
+    delay_time = brake_time
+    delay_start = time.monotonic()
+    while (time.monotonic() - delay_start) <= delay_time:
+        setMotorsDuty(0, 0)

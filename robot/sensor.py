@@ -29,6 +29,21 @@ def read_sensor(sensor):
     end_time = time.monotonic()
     return (end_time - start_time) * 1_000_000  # Decay time in μs
 
+# Read all sensors
+def read_sensor_array(num_samples = 1):
+    global sensors
+    readings = []
+
+    # Read decay times from sensors
+    for sense in sensors:
+        sensor_readings = []
+        for _ in range(num_samples):
+            decay_time = read_sensor(sense)
+            sensor_readings.append(decay_time)
+        average_reading = sum(sensor_readings) / len(sensor_readings)
+        readings.append(average_reading)
+    return readings
+
 # Normalize sensor values
 def normalizeSensorValues(sensor_values, white_val=50, black_val=2000):
     normalized_values = []
@@ -57,7 +72,7 @@ def calibrate_sensor():
     sensor_positions = [-3, -2, -1, 1, 2, 3]  # Positions of the sensors
     sum = [0, 0, 0, 0, 0, 0]
     iterations = 0
-    min_iterations = 25
+    min_iterations = 5
 
     meas_time = 1.0
     meas_start = time.monotonic()
@@ -73,8 +88,8 @@ def calibrate_sensor():
     readings = [reading / iterations for reading in sum]
 
     # Normalize Readings
-    normalized_readings = normalizeSensorValues(readings, white_val=0, black_val=2000)
-    binary_readings = thresholdSensorValues(normalized_readings, threshold=0.85)
+    normalized_readings = normalizeSensorValues(readings, white_val=0, black_val=1900)
+    binary_readings = thresholdSensorValues(normalized_readings, threshold=0.7)
     # Calculate the line position
     line_position = calculate_line_position(binary_readings, sensor_positions)
 
